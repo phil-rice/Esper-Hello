@@ -14,6 +14,37 @@ case class Tick(@BeanProperty symbol: String, @BeanProperty price: Double, @Bean
   def this(symbol: String, price: Double, timestamp: Long) = this(symbol, price, new Date(timestamp))
 }
 
+object EPStatementPimp {
+  implicit def pimpEsStatement(s: EPStatement) = new EPStatementPimp(s)
+}
+
+class EPStatementPimp(statement: EPStatement) {
+  def update(fn: (Array[EventBean], Array[EventBean]) => Unit) {
+    statement.addListener(new UpdateListener() {
+      def update(newData: Array[EventBean], oldData: Array[EventBean]) = fn(newData, oldData)
+    })
+  }
+  def update(fn: Array[EventBean] => Unit) {
+    statement.addListener(new UpdateListener() {
+      def update(newData: Array[EventBean], oldData: Array[EventBean]) = fn(newData)
+    })
+  }
+}
+
+object SafeIteratorPimp {
+  implicit def pimpSafeIterator[X](s: SafeIterator[X]): Traversable[X] = new SafeIteratorPimp[X](s)
+
+}
+
+class SafeIteratorPimp[X](s: SafeIterator[X]) extends Traversable[X] {
+  def foreach[U](fn: X => U) = {
+    while (s.hasNext()) {
+      fn(s.next)
+    }
+    s.close()
+  }
+}
+
 object EsperHello {
 
   val generator = new Random();
@@ -27,26 +58,9 @@ object EsperHello {
     cepRT.sendEvent(tick);
   }
 
-  object EPStatementPimp {
-    implicit def pimp(s: EPStatement) = new EPStatementPimp(s)
-  }
-
-  class EPStatementPimp(statement: EPStatement) {
-    def update(fn: (Array[EventBean], Array[EventBean]) => Unit) {
-      statement.addListener(new UpdateListener() {
-        def update(newData: Array[EventBean], oldData: Array[EventBean]) = fn(newData, oldData)
-      })
-    }
-    def update(fn: Array[EventBean] => Unit) {
-      statement.addListener(new UpdateListener() {
-        def update(newData: Array[EventBean], oldData: Array[EventBean]) = fn(newData)
-      })
-
-    }
-
-  }
-
   def main(args: Array[String]) {
+    import EPStatementPimp._;
+    import SafeIteratorPimp._;
 
     //The Configuration is meant only as an initialization-time object.
     val cepConfig = new Configuration();
@@ -59,19 +73,17 @@ object EsperHello {
 
     val cepAdm = cep.getEPAdministrator();
     val cepStatement = cepAdm.createEPL("select * from StockTick(symbol='AAPL').win:length(2) having avg(price) > 6.0");
-    import EPStatementPimp._
 
     cepStatement.update { newData => System.out.println("Event received: " + newData(0).getUnderlying()) }
-//
-//    cepStatement.addListener(new UpdateListener() {
-//      def update(newData: Array[EventBean], oldData: Array[EventBean]) = {
-//        System.out.println("Event received: " + newData(0).getUnderlying());
-//      }
-//    })
 
     while (true) {
       for (_ <- (0 to 15))
         generateRandomTick(cepRT)
+      val safeIter = cepStatement.safeIterator();
+      println("got iterator")
+      for (x <- safeIter) {
+        println(s"Pulling: $x")
+      }
       Thread.sleep(1000)
     }
   }
