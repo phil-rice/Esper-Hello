@@ -27,6 +27,25 @@ object EsperHello {
     cepRT.sendEvent(tick);
   }
 
+  object EPStatementPimp {
+    implicit def pimp(s: EPStatement) = new EPStatementPimp(s)
+  }
+
+  class EPStatementPimp(statement: EPStatement) {
+    def update(fn: (Array[EventBean], Array[EventBean]) => Unit) {
+      statement.addListener(new UpdateListener() {
+        def update(newData: Array[EventBean], oldData: Array[EventBean]) = fn(newData, oldData)
+      })
+    }
+    def update(fn: Array[EventBean] => Unit) {
+      statement.addListener(new UpdateListener() {
+        def update(newData: Array[EventBean], oldData: Array[EventBean]) = fn(newData)
+      })
+
+    }
+
+  }
+
   def main(args: Array[String]) {
 
     //The Configuration is meant only as an initialization-time object.
@@ -40,12 +59,15 @@ object EsperHello {
 
     val cepAdm = cep.getEPAdministrator();
     val cepStatement = cepAdm.createEPL("select * from StockTick(symbol='AAPL').win:length(2) having avg(price) > 6.0");
+    import EPStatementPimp._
 
-    cepStatement.addListener(new UpdateListener() {
-      def update(newData: Array[EventBean], oldData: Array[EventBean]) = {
-        System.out.println("Event received: " + newData(0).getUnderlying());
-      }
-    })
+    cepStatement.update { newData => System.out.println("Event received: " + newData(0).getUnderlying()) }
+//
+//    cepStatement.addListener(new UpdateListener() {
+//      def update(newData: Array[EventBean], oldData: Array[EventBean]) = {
+//        System.out.println("Event received: " + newData(0).getUnderlying());
+//      }
+//    })
 
     while (true) {
       for (_ <- (0 to 15))
