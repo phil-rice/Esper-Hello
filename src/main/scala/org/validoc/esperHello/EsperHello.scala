@@ -37,10 +37,11 @@ object SafeIteratorPimp {
 }
 
 class SafeIteratorPimp[X](s: SafeIterator[X]) extends Traversable[X] {
-  def foreach[U](fn: X => U) = {
+  def foreach[U](fn: X => U) = try {
     while (s.hasNext()) {
       fn(s.next)
     }
+  } finally {
     s.close()
   }
 }
